@@ -1,9 +1,16 @@
 import numpy as np
 import os
+import re
 import math
 import uuid
+import mujoco
+from bs4 import BeautifulSoup
+from pathlib import Path
 from xml.sax.saxutils import escape
+from colorama import Fore, Back, Style
 from . import stl_combine
+from . import mujoco_xml
+from .simplify_mesh import reduce_faces
 
 
 def xml_escape(unescaped: str) -> str:
@@ -72,12 +79,13 @@ def mat2quat(rmat):
 
 
 def mujoco_pose(matrix):
-    tags = 'pos="%.20g %.20g %.20g" quat="%.20g %.20g %.20g %.20g"'
+    p = '%.20g %.20g %.20g'
+    q = '%.20g %.20g %.20g %.20g'
     x = matrix[0, 3]
     y = matrix[1, 3]
     z = matrix[2, 3]
     quat = mat2quat(matrix[:3, :3])
-    return tags % (x, y, z, quat[0], quat[1], quat[2], quat[3])
+    return p % (x, y, z), q % (quat[0], quat[1], quat[2], quat[3])
 
 
 def origin(matrix):
@@ -203,6 +211,11 @@ class RobotDescription(object):
 
         return mass, com, inertia
 
+    def export(self, output_dir):
+        print("\n" + Style.BRIGHT + "* Writing " + self.ext.upper() + " file" + Style.RESET_ALL)
+        with open(output_dir + '/robot.' + self.ext, 'w', encoding="utf-8") as stream:
+            stream.write(self.xml)
+
 
 class RobotURDF(RobotDescription):
 
@@ -269,6 +282,7 @@ class RobotURDF(RobotDescription):
 
                 filename = self._link_name + '_' + node + '.stl'
                 stl_combine.save_mesh(self._mesh[node], self.meshDir + '/' + filename)
+                reduce_faces(self.meshDir + '/' + filename)
                 if self.shouldSimplifySTLs(node):
                     stl_combine.simplify_stl(self.meshDir + '/' + filename, self.maxSTLSize)
                 self.addSTL(np.identity(4), filename, color, self._link_name, node)
@@ -573,203 +587,46 @@ class RobotSDF(RobotDescription):
         self.append('</sdf>')
 
 
-class RobotMujocoXML:
-
-    def __init__(self, name):
-        self.name = name
-        self.xml = []
-        self.append('<mujoco model="{}">'.format(name))
-        self.setupCompiler()
-        self.setupOptions()
-        self.defaultSettings()
-
-    def append(self, text):
-        self.xml.append(text)
-
-    def setupCompiler(self):
-        self.append('<compiler angle="radian" meshdir="assets" autolimits="true"/>')
-
-    def setupOptions(self):
-        self.append('<option integrator="implicitfast"/>')
-
-    def defaultSettings(self):
-        self.append('<default>')
-        self.append('<default class="panda">')
-        # Add materials, joints, and other defaults here
-        self.append('</default>')
-        self.append('</default>')
-
-    def addMaterial(self, name, rgba):
-        self.append('<material name="{}" rgba="{}"/>'.format(name, rgba))
-
-    def addMesh(self, name, file):
-        self.append('<mesh name="{}" file="{}"/>'.format(name, file))
-
-    def startWorldbody(self):
-        self.append('<worldbody>')
-
-    def endWorldbody(self):
-        self.append('</worldbody>')
-
-    def addBody(
-        self,
-        name,
-        pos,
-        quat=None
-    ):  # Add a new body with the specified position and (optionally) orientation quat_attr = 'quat="{}"'.format(" ".join(map(str, quat))) if quat else ""
-        self.append('<body name="{}" pos="{}" {}>'.format(name, " ".join(map(str, pos)), quat_attr))
-
-    def endBody(self):
-        self.append('</body>')
-
-    def addInertial(self, mass, pos, fullinertia):
-        self.append('<inertial mass="{}" pos="{}" fullinertia="{}"/>'.format(
-            mass, " ".join(map(str, pos)), " ".join(map(str, fullinertia))))
-
-    def addGeom(self, type, mesh, material, class_name=None):
-        class_attr = 'class="{}"'.format(class_name) if class_name else ""
-        self.append('<geom type="{}" mesh="{}" material="{}" {} />'.format(
-            type, mesh, material, class_attr))
-
-    def addJoint(self, name, type, axis, range):
-        self.append('<joint name="{}" type="{}" axis="{}" range="{}"/>'.format(
-            name, type, " ".join(map(str, axis)), " ".join(map(str, range))))
-
-    def finalize(self):
-        self.append('</mujoco>')
-        return "\n".join(self.xml)
-
-
-# Example usage
-robot = RobotMujocoXML("panda")
-# Add materials, meshes, bodies, inertials, geoms, joints, etc.
-# robot.addMaterial("white", "1 1 1 1")
-# ...
-# Finalize and get the XML string
-mujoco_xml_string = robot.finalize()
-print(mujoco_xml_string)
-
-
-class Section:
-
-    def __init__(self):
-        self.xml = ''
-
-    def append(self, str):
-        self.xml += str + "\n"
-
-
-class RobotMujocoXML(RobotDescription):
+class RobotMujocoXML(RobotURDF):
 
     def __init__(self, name):
         super().__init__(name)
-        self.ext = 'xml'
-        self.worldbody = Section()
-        self.pre = Section()
-        self.assets = Section()
-        self.append('<mujoco model="{}">'.format(name))
 
-        self.assets.append('<asset>')
-        self.worldbody.append('<worldbody>')
-        self.setupCompiler()
-        self.setupOptions()
-        self.defaultSettings()
+    def export(self, output_dir):
+        super().export(output_dir)
+        output_dir = Path(output_dir)
+        model = mujoco.MjModel.from_xml_path((output_dir / f'robot.{self.ext}').as_posix())
+        for i in range(model.nv):
+            j = model.joint(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i))
+            j.frictionloss = 0.1
+        mujoco.mj_saveLastXML((output_dir / "robot.xml").as_posix(), model)
+        with open((output_dir / "robot.xml").as_posix(), "r") as f:
+            soup = BeautifulSoup(f.read(), "xml")
+        model = soup.find('mujoco')
+        default_tag = soup.find('default')
+        if not default_tag:
+            default_tag = soup.new_tag('default')
+        geom_default = soup.new_tag('geom',
+                                    attrs=dict(contype="0", conaffinity="0", group="2",
+                                               type="mesh"))
+        default_tag.append(geom_default)
 
-    def setupCompiler(self):
-        self.pre.append('<compiler angle="radian" meshdir="assets" autolimits="true"/>')
+        compiler_tag = soup.find('compiler')
+        if not compiler_tag:
+            compiler_tag = soup.new_tag('compiler')
+        compiler_tag['angle'] = "radian"
+        compiler_tag['autolimits'] = "true"
+        compiler_tag['balanceinertia'] = "true"
+        compiler_tag['meshdir'] = "."
 
-    def setupOptions(self):
-        self.pre.append('<option integrator="implicitfast"/>')
+        option_tag = soup.find('option')
+        if not option_tag:
+            option_tag = soup.new_tag('option')
+        option_tag['integrator'] = "implicitfast"
+        option_tag['impratio'] = 10
 
-    def defaultSettings(self):
-        self.pre.append('<default>')
-        self.pre.append('<default class="visual">')
-        self.pre.append('<geom type="mesh" contype="0" conaffinity="0" group="2"/>')
-        self.pre.append('</default>')
-        self.pre.append('<default class="collision">')
-        self.pre.append('<geom type="mesh" group="3"/>')
-        self.pre.append('</default>')
-        self.pre.append('</default>')
-        # Add materials, joints, and other defaults here
-
-    def addDummyLink(self, name, visualMatrix=None, visualSTL=None, visualColor=None):
-        pass
-
-    def addDummyBaseLinkMethod(self, name):
-        pass
-
-    def addFixedJoint(self, parent, child, matrix, name=None):
-        pass
-
-    def startLink(self, name, matrix):
-        self._link_name = name
-        self.resetLink()
-        print(name)
-        matrix = np.array(matrix)
-        print(matrix)
-        p = mujoco_pose(matrix)
-        print(p)
-        body = f'<body name="{name}" {p}>'
-        self.worldbody.append(body)
-
-    def endLink(self):
-        mass, com, inertia = self.linkDynamics()
-
-        print(mass)
-        print(inertia)
-
-        for node in ['visual', 'collision']:
-            if self._mesh[node] is not None:
-                if node == 'visual' and self._color_mass > 0:
-                    color = self._color / self._color_mass
-                else:
-                    color = [0.5, 0.5, 0.5]
-
-                filename = self._link_name + '_' + node + '.stl'
-                stl_combine.save_mesh(self._mesh[node], self.meshDir + '/' + filename)
-                if self.shouldSimplifySTLs(node):
-                    stl_combine.simplify_stl(self.meshDir + '/' + filename, self.maxSTLSize)
-                self.addSTL(np.identity(4), filename, color, self._link_name, node)
-        self.worldbody.append(
-            '<inertial mass="%.20g" pos="%.20g %.20g %.20g" fullinertia="%.20g %.20g %.20g %.20g %.20g %.20g" />'
-            % (mass, com[0], com[1], com[2], inertia[0, 0], inertia[0, 1], inertia[0, 2],
-               inertia[1, 1], inertia[1, 2], inertia[2, 2]))
-        self.worldbody.append('</body>')
-
-        if self.useFixedLinks:
-            n = 0
-            for visual in self._visuals:
-                n += 1
-                visual_name = '%s_%d' % (self._link_name, n)
-                self.addDummyLink(visual_name, visual[0], visual[1], visual[2])
-                self.addJoint('fixed', self._link_name, visual_name, np.eye(4),
-                              visual_name + '_fixing', None)
-
-    def addFrame(self, name, matrix):
-        pass
-
-    def addSTL(self, matrix, stl, color, name, node='visual'):
-        stl_file = self.packageName.strip("/") + "/" + stl
-        stl_file = xml_escape(stl_file)
-        self.assets.append(f'<mesh name="{name}" file="{stl_file}"/>')
-        self.worldbody.append(f'<geom type="mesh" mesh="{name} class={node}"/>')
-
-    def addPart(self, matrix, stl, mass, com, inertia, color, shapes=None, name=''):
-        pass
-
-    def addJoint(self, jointType, linkFrom, linkTo, transform, name, jointLimits, zAxis=[0, 0, 1]):
-        if jointLimits is not None:
-            jnt_range = 'range="%.20g %.20g"' % jointLimits
-        else:
-            jnt_range = 'range="-2.8973 2.8973"'
-        a1, a2, a3 = zAxis
-        p = mujoco_pose(transform)
-        self.worldbody.append(
-            f'<joint name="{name}" type="hinge" axis="{a1} {a2} {a3}" {p} {jnt_range} damping="1"/>'
-        )
-
-    def finalize(self):
-        self.assets.append('</asset>')
-        self.worldbody.append('</worldbody>')
-        self.append(self.pre.xml + '\n' + self.assets.xml + '\n' + self.worldbody.xml)
-        self.append('</mujoco>')
+        model.insert(0, default_tag)
+        model.insert(0, option_tag)
+        model.insert(0, compiler_tag)
+        with open((output_dir / "robot.xml").as_posix(), "w") as f:
+            f.write(soup.prettify())

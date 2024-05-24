@@ -22,7 +22,7 @@ def main():
         robot = RobotURDF(config['robotName'])
     elif config['outputFormat'] == 'sdf':
         robot = RobotSDF(config['robotName'])
-    elif config['outputFormat'] == 'xml':
+    elif config['outputFormat'] == 'mjcf':
         robot = RobotMujocoXML(config['robotName'])
     else:
         print(Fore.RED + 'ERROR: Unknown output format: ' + config['outputFormat'] +
@@ -43,6 +43,8 @@ def main():
     robot.meshDir = config['outputDirectory']
 
     def partIsIgnore(name):
+        if "bevel" in name.lower():
+            return True
         if config['whitelist'] is None:
             return name in config['ignore']
         else:
@@ -246,9 +248,7 @@ def main():
     robot.finalize()
     # print(tree)
 
-    print("\n" + Style.BRIGHT + "* Writing " + robot.ext.upper() + " file" + Style.RESET_ALL)
-    with open(config['outputDirectory'] + '/robot.' + robot.ext, 'w', encoding="utf-8") as stream:
-        stream.write(robot.xml)
+    robot.export(config['outputDirectory'])
 
     if len(config['postImportCommands']):
         print("\n" + Style.BRIGHT + "* Executing post-import commands" + Style.RESET_ALL)

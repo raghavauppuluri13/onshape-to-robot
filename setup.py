@@ -27,9 +27,11 @@ setuptools.setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    keywords="robot robotics cad design onshape bullet pybullet sdf urdf gazebo ros model kinematics",
+    keywords=
+    "robot robotics cad design onshape bullet pybullet sdf urdf gazebo ros model kinematics",
     install_requires=[
-        "numpy", "pybullet", "requests", "commentjson", "colorama>=0.4.6", "numpy-stl", "transforms3d"
+        "numpy", "pybullet", "requests", "commentjson", "colorama>=0.4.6", "numpy-stl",
+        "transforms3d", "beautifulsoup4", "mujoco"
     ],
     include_package_data=True,
     package_data={'': ['bullet/*', 'README.md']},

@@ -1,0 +1,8 @@
+
+<!DOCTYPE FilterScript>
+<FilterScript>
+ <filter name="Simplification: Clustering Decimation">
+  <Param name="Threshold" type="RichAbsPerc" max="0.247701" isxmlparam="0" description="Cell Size" tooltip="The size of the cell of the clustering grid. Smaller the cell finer the resulting mesh. For obtaining a very coarse mesh use larger values." min="0" value="0.001"/>
+  <Param name="Selected" type="RichBool" isxmlparam="0" description="Affect only selected faces" tooltip="If selected the filter affect only the selected faces" value="false"/>
+ </filter>
+</FilterScript>

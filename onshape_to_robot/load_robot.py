@@ -14,23 +14,11 @@ client.useCollisionsConfigurations = config["useCollisionsConfigurations"]
 
 # If a versionId is provided, it will be used, else the main workspace is retrieved
 if config["versionId"] != "":
-    print(
-        "\n"
-        + Style.BRIGHT
-        + "* Using configuration version ID "
-        + config["versionId"]
-        + " ..."
-        + Style.RESET_ALL
-    )
+    print("\n" + Style.BRIGHT + "* Using configuration version ID " + config["versionId"] + " ..." +
+          Style.RESET_ALL)
 elif config["workspaceId"] != "":
-    print(
-        "\n"
-        + Style.BRIGHT
-        + "* Using configuration workspace ID "
-        + config["workspaceId"]
-        + " ..."
-        + Style.RESET_ALL
-    )
+    print("\n" + Style.BRIGHT + "* Using configuration workspace ID " + config["workspaceId"] +
+          " ..." + Style.RESET_ALL)
     workspaceId = config["workspaceId"]
 else:
     print("\n" + Style.BRIGHT + "* Retrieving workspace ID ..." + Style.RESET_ALL)
@@ -39,52 +27,29 @@ else:
     print(Fore.GREEN + "+ Using workspace id: " + workspaceId + Style.RESET_ALL)
 
 # Now, finding the assembly, according to given name in configuration, or else the first possible one
-print(
-    "\n"
-    + Style.BRIGHT
-    + "* Retrieving elements in the document, searching for the assembly..."
-    + Style.RESET_ALL
-)
+print("\n" + Style.BRIGHT + "* Retrieving elements in the document, searching for the assembly..." +
+      Style.RESET_ALL)
 if config["versionId"] != "":
-    elements = client.list_elements(
-        config["documentId"], config["versionId"], "v"
-    ).json()
+    elements = client.list_elements(config["documentId"], config["versionId"], "v").json()
 else:
     elements = client.list_elements(config["documentId"], workspaceId).json()
 assemblyId = None
 assemblyName = ""
 for element in elements:
-    if element["type"] == "Assembly" and (
-        config["assemblyName"] is False or element["name"] == config["assemblyName"]
-    ):
-        print(
-            Fore.GREEN
-            + "+ Found assembly, id: "
-            + element["id"]
-            + ', name: "'
-            + element["name"]
-            + '"'
-            + Style.RESET_ALL
-        )
+    if element["type"] == "Assembly" and (config["assemblyName"] is False
+                                          or element["name"] == config["assemblyName"]):
+        print(Fore.GREEN + "+ Found assembly, id: " + element["id"] + ', name: "' +
+              element["name"] + '"' + Style.RESET_ALL)
         assemblyName = element["name"]
         assemblyId = element["id"]
 
 if assemblyId == None:
-    print(
-        Fore.RED + "ERROR: Unable to find assembly in this document" + Style.RESET_ALL
-    )
+    print(Fore.RED + "ERROR: Unable to find assembly in this document" + Style.RESET_ALL)
     exit(1)
 
 # Retrieving the assembly
-print(
-    "\n"
-    + Style.BRIGHT
-    + '* Retrieving assembly "'
-    + assemblyName
-    + '" with id '
-    + assemblyId
-    + Style.RESET_ALL
-)
+print("\n" + Style.BRIGHT + '* Retrieving assembly "' + assemblyName + '" with id ' + assemblyId +
+      Style.RESET_ALL)
 if config["versionId"] != "":
     assembly = client.get_assembly(
         config["documentId"],
@@ -124,11 +89,8 @@ def findInstance(path, instances=None):
                 m = instance["documentMicroversion"]
                 e = instance["elementId"]
                 for asm in assembly["subAssemblies"]:
-                    if (
-                        asm["documentId"] == d
-                        and asm["documentMicroversion"] == m
-                        and asm["elementId"] == e
-                    ):
+                    if (asm["documentId"] == d and asm["documentMicroversion"] == m
+                            and asm["elementId"] == e):
                         return findInstance(path[1:], asm["instances"])
 
     print(Fore.RED + "Could not find instance for " + str(path) + Style.RESET_ALL)
@@ -142,6 +104,7 @@ for occurrence in root["occurrences"]:
     occurrence["transform"] = np.matrix(np.reshape(occurrence["transform"], (4, 4)))
     occurrence["linkName"] = None
     occurrences[tuple(occurrence["path"])] = occurrence
+    print(occurrence["path"], " ", occurrence["instance"]["name"])
 
 # Gets an occurrence given its full path
 
@@ -175,25 +138,18 @@ features_init(client, config, root, workspaceId, assemblyId)
 
 def get_T_part_mate(matedEntity: dict):
     T_part_mate = np.eye(4)
-    T_part_mate[:3, :3] = np.stack(
-        (
-            np.array(matedEntity["matedCS"]["xAxis"]),
-            np.array(matedEntity["matedCS"]["yAxis"]),
-            np.array(matedEntity["matedCS"]["zAxis"]),
-        )
-    ).T
+    T_part_mate[:3, :3] = np.stack((
+        np.array(matedEntity["matedCS"]["xAxis"]),
+        np.array(matedEntity["matedCS"]["yAxis"]),
+        np.array(matedEntity["matedCS"]["zAxis"]),
+    )).T
     T_part_mate[:3, 3] = matedEntity["matedCS"]["origin"]
 
     return T_part_mate
 
 
 # First, features are scanned to find the DOFs. Links that they connects are then tagged
-print(
-    "\n"
-    + Style.BRIGHT
-    + "* Getting assembly features, scanning for DOFs..."
-    + Style.RESET_ALL
-)
+print("\n" + Style.BRIGHT + "* Getting assembly features, scanning for DOFs..." + Style.RESET_ALL)
 trunk = None
 relations = {}
 features = root["features"]
@@ -202,19 +158,16 @@ for feature in features:
         name = feature["featureData"]["name"]
         if name[0:5] == "link_":
             name = name[5:]
-            occurrences[(feature["featureData"]["occurrence"][0],)]["linkName"] = name
+            occurrences[(feature["featureData"]["occurrence"][0], )]["linkName"] = name
     else:
         if feature["suppressed"]:
             continue
 
         data = feature["featureData"]
 
-        if (
-            "matedEntities" not in data
-            or len(data["matedEntities"]) != 2
-            or len(data["matedEntities"][0]["matedOccurrence"]) == 0
-            or len(data["matedEntities"][1]["matedOccurrence"]) == 0
-        ):
+        if ("matedEntities" not in data or len(data["matedEntities"]) != 2
+                or len(data["matedEntities"][0]["matedOccurrence"]) == 0
+                or len(data["matedEntities"][1]["matedOccurrence"]) == 0):
             continue
 
         child = data["matedEntities"][0]["matedOccurrence"][0]
@@ -225,11 +178,9 @@ for feature in features:
                 matedEntity = data["matedEntities"][k]
                 occurrence = matedEntity["matedOccurrence"][0]
 
-                T_world_part = getOccurrence(matedEntity["matedOccurrence"])[
-                    "transform"
-                ]
+                T_world_part = getOccurrence(matedEntity["matedOccurrence"])["transform"]
                 T_part_mate = get_T_part_mate(matedEntity)
-                T_world_mate = T_world_part * T_part_mate
+                T_world_mate = T_world_part @ T_part_mate
 
                 frames[occurrence].append([f"{data['name']}_{k+1}", T_world_mate])
         elif data["name"].startswith("dof_"):
@@ -241,13 +192,8 @@ for feature in features:
                 del parts[-1]
             name = "_".join(parts)
             if name == "":
-                print(
-                    Fore.RED
-                    + "ERROR: a DOF dones't have any name (\""
-                    + data["name"]
-                    + '" should be "dof_...")'
-                    + Style.RESET_ALL
-                )
+                print(Fore.RED + "ERROR: a DOF dones't have any name (\"" + data["name"] +
+                      '" should be "dof_...")' + Style.RESET_ALL)
                 exit()
 
             limits = None
@@ -266,18 +212,10 @@ for feature in features:
             elif data["mateType"] == "FASTENED":
                 jointType = "fixed"
             else:
-                print(
-                    Fore.RED
-                    + 'ERROR: "'
-                    + name
-                    + '" is declared as a DOF but the mate type is '
-                    + data["mateType"]
-                    + ""
-                )
-                print(
-                    "       Only REVOLUTE, CYLINDRICAL, SLIDER and FASTENED are supported"
-                    + Style.RESET_ALL
-                )
+                print(Fore.RED + 'ERROR: "' + name +
+                      '" is declared as a DOF but the mate type is ' + data["mateType"] + "")
+                print("       Only REVOLUTE, CYLINDRICAL, SLIDER and FASTENED are supported" +
+                      Style.RESET_ALL)
                 exit(1)
 
             # We compute the axis in the world frame
@@ -300,33 +238,14 @@ for feature in features:
 
             limitsStr = ""
             if limits is not None:
-                limitsStr = (
-                    "["
-                    + str(round(limits[0], 3))
-                    + ": "
-                    + str(round(limits[1], 3))
-                    + "]"
-                )
-            print(
-                Fore.GREEN
-                + "+ Found DOF: "
-                + name
-                + " "
-                + Style.DIM
-                + "("
-                + jointType
-                + ")"
-                + limitsStr
-                + Style.RESET_ALL
-            )
+                limitsStr = ("[" + str(round(limits[0], 3)) + ": " + str(round(limits[1], 3)) + "]")
+            print(Fore.GREEN + "+ Found DOF: " + name + " " + Style.DIM + "(" + jointType + ")" +
+                  limitsStr + Style.RESET_ALL)
 
             if child in relations:
                 print(Fore.RED)
-                print(
-                    "Error, the relation "
-                    + name
-                    + " is connected a child that is already connected"
-                )
+                print("Error, the relation " + name +
+                      " is connected a child that is already connected")
                 print("Be sure you ordered properly your relations, see:")
                 print(
                     "https://onshape-to-robot.readthedocs.io/en/latest/design.html#specifying-degrees-of-freedom"
@@ -337,6 +256,8 @@ for feature in features:
             relations[child] = {
                 "parent": parent,
                 "worldAxisFrame": T_world_mate,
+                "T_part_mate": T_part_mate,
+                "T_world_part": T_world_part,
                 "zAxis": np.array([0, 0, 1]),
                 "name": name,
                 "type": jointType,
@@ -346,14 +267,8 @@ for feature in features:
             assignParts(child, child)
             assignParts(parent, parent)
 
-print(
-    Fore.GREEN
-    + Style.BRIGHT
-    + "* Found total "
-    + str(len(relations))
-    + " DOFs"
-    + Style.RESET_ALL
-)
+print(Fore.GREEN + Style.BRIGHT + "* Found total " + str(len(relations)) + " DOFs" +
+      Style.RESET_ALL)
 
 # If we have no DOF
 if len(relations) == 0:
@@ -378,11 +293,8 @@ while changed:
 
         data = feature["featureData"]
 
-        if (
-            len(data["matedEntities"]) != 2
-            or len(data["matedEntities"][0]["matedOccurrence"]) == 0
-            or len(data["matedEntities"][1]["matedOccurrence"]) == 0
-        ):
+        if (len(data["matedEntities"]) != 2 or len(data["matedEntities"][0]["matedOccurrence"]) == 0
+                or len(data["matedEntities"][1]["matedOccurrence"]) == 0):
             continue
 
         occurrenceA = data["matedEntities"][0]["matedOccurrence"][0]
@@ -393,24 +305,22 @@ while changed:
                 # In case of a constraint naemd "frame_", we add it as a frame, we draw it if drawFrames is True
                 name = "_".join(data["name"].split("_")[1:])
                 if occurrenceA in assignations:
-                    frames[occurrenceA].append(
-                        [name, data["matedEntities"][1]["matedOccurrence"]]
-                    )
+                    frames[occurrenceA].append([name, data["matedEntities"][1]["matedOccurrence"]])
                     assignParts(
                         occurrenceB,
-                        {True: assignations[occurrenceA], False: "frame"}[
-                            config["drawFrames"]
-                        ],
+                        {
+                            True: assignations[occurrenceA],
+                            False: "frame"
+                        }[config["drawFrames"]],
                     )
                 else:
-                    frames[occurrenceB].append(
-                        [name, data["matedEntities"][0]["matedOccurrence"]]
-                    )
+                    frames[occurrenceB].append([name, data["matedEntities"][0]["matedOccurrence"]])
                     assignParts(
                         occurrenceA,
-                        {True: assignations[occurrenceB], False: "frame"}[
-                            config["drawFrames"]
-                        ],
+                        {
+                            True: assignations[occurrenceB],
+                            False: "frame"
+                        }[config["drawFrames"]],
                     )
                 changed = True
             else:
@@ -427,26 +337,19 @@ while changed:
 #    that are then assigned to trunk by default
 # 3. Collect all the pieces of the robot tree
 print("\n" + Style.BRIGHT + "* Building robot tree" + Style.RESET_ALL)
-
+print(len(relations))
 for childId in relations:
     entry = relations[childId]
     if entry["parent"] not in relations:
         trunk = entry["parent"]
         break
 trunkOccurrence = getOccurrence([trunk])
-print(
-    Style.BRIGHT + "* Trunk is " + trunkOccurrence["instance"]["name"] + Style.RESET_ALL
-)
+print(Style.BRIGHT + "* Trunk is " + trunkOccurrence["instance"]["name"] + Style.RESET_ALL)
 
 for occurrence in occurrences.values():
     if occurrence["assignation"] is None:
-        print(
-            Fore.YELLOW
-            + "WARNING: part ("
-            + occurrence["instance"]["name"]
-            + ") has no assignation, connecting it with trunk"
-            + Style.RESET_ALL
-        )
+        print(Fore.YELLOW + "WARNING: part (" + occurrence["instance"]["name"] +
+              ") has no assignation, connecting it with trunk" + Style.RESET_ALL)
         child = occurrence["path"][0]
         connectParts(child, trunk)
 
@@ -454,11 +357,8 @@ for occurrence in occurrences.values():
 for occurrence in occurrences.values():
     if not occurrence["instance"]["suppressed"]:
         for k in range(len(occurrence["path"]) - 1):
-            upper_path = tuple(occurrence["path"][0 : k + 1])
-            if (
-                upper_path in occurrences
-                and occurrences[upper_path]["instance"]["suppressed"]
-            ):
+            upper_path = tuple(occurrence["path"][0:k + 1])
+            if (upper_path in occurrences and occurrences[upper_path]["instance"]["suppressed"]):
                 occurrence["instance"]["suppressed"] = True
 
 
@@ -470,12 +370,19 @@ def collect(id):
         entry = relations[childId]
         if entry["parent"] == id:
             child = collect(childId)
+            child["T_world_part"] = entry["T_world_part"]
+            child["T_part_mate"] = entry["T_part_mate"]
             child["axis_frame"] = entry["worldAxisFrame"]
             child["z_axis"] = entry["zAxis"]
             child["dof_name"] = entry["name"]
             child["jointType"] = entry["type"]
             child["jointLimits"] = entry["limits"]
             part["children"].append(child)
+        o_c = getOccurrence([childId])
+        i_c = o_c['instance']
+        o_p = getOccurrence([entry["parent"]])
+        i_p = o_p['instance']
+        #print(entry['name'], " ", i_c['name'], " ", i_p['name'])
     return part
 
 
