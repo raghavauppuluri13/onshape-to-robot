@@ -605,12 +605,28 @@ class RobotMujocoXML(RobotURDF):
         model = soup.find('mujoco')
         default_tag = soup.find('default')
         if not default_tag:
+
             default_tag = soup.new_tag('default')
         geom_default = soup.new_tag('geom',
                                     attrs=dict(contype="0", conaffinity="0", group="2",
                                                type="mesh"))
-        default_tag.append(geom_default)
+        act_default = soup.new_tag('general',
+                                   attrs=dict(dyntype="none",
+                                              biastype="affine",
+                                              ctrlrange="-2.8 2.8",
+                                              forcerange="-87 87", gainprm="4500", biasprm="0 -4500 -450"))
 
+        default_tag.append(geom_default)
+        default_tag.append(act_default)
+
+
+        act_tag = soup.new_tag('actuator')
+        for i in range(model.nv):
+            joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            general_tag = soup.new_tag('general',
+                                       attrs=dict(name=joint_name + "_act",
+                                                  joint=joint_name)
+            act_tag.append(general_tag)
         compiler_tag = soup.find('compiler')
         if not compiler_tag:
             compiler_tag = soup.new_tag('compiler')
