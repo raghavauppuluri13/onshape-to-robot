@@ -9,7 +9,6 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from colorama import Fore, Back, Style
 from . import stl_combine
-from . import mujoco_xml
 from .simplify_mesh import reduce_faces
 
 
@@ -594,12 +593,13 @@ class RobotMujocoXML(RobotURDF):
 
     def export(self, output_dir):
         super().export(output_dir)
-        output_dir = Path(output_dir)
-        model = mujoco.MjModel.from_xml_path((output_dir / f'robot.{self.ext}').as_posix())
-        for i in range(model.nv):
-            j = model.joint(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i))
+        output_dir = Path(output_dir).absolute()
+        print((output_dir / f'robot.{self.ext}').as_posix())
+        mj_model = mujoco.MjModel.from_xml_path((output_dir / f'robot.{self.ext}').as_posix())
+        for i in range(mj_model.nv):
+            j = mj_model.joint(mujoco.mj_id2name(mj_model, mujoco.mjtObj.mjOBJ_JOINT, i))
             j.frictionloss = 0.1
-        mujoco.mj_saveLastXML((output_dir / "robot.xml").as_posix(), model)
+        mujoco.mj_saveLastXML((output_dir / "robot.xml").as_posix(), mj_model)
         with open((output_dir / "robot.xml").as_posix(), "r") as f:
             soup = BeautifulSoup(f.read(), "xml")
         model = soup.find('mujoco')
@@ -614,18 +614,18 @@ class RobotMujocoXML(RobotURDF):
                                    attrs=dict(dyntype="none",
                                               biastype="affine",
                                               ctrlrange="-2.8 2.8",
-                                              forcerange="-87 87", gainprm="4500", biasprm="0 -4500 -450"))
+                                              forcerange="-87 87",
+                                              gainprm="4500",
+                                              biasprm="0 -4500 -450"))
 
         default_tag.append(geom_default)
         default_tag.append(act_default)
 
-
         act_tag = soup.new_tag('actuator')
-        for i in range(model.nv):
-            joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i)
+        for i in range(mj_model.nv):
+            joint_name = mujoco.mj_id2name(mj_model, mujoco.mjtObj.mjOBJ_JOINT, i)
             general_tag = soup.new_tag('general',
-                                       attrs=dict(name=joint_name + "_act",
-                                                  joint=joint_name)
+                                       attrs=dict(name=joint_name + "_act", joint=joint_name))
             act_tag.append(general_tag)
         compiler_tag = soup.find('compiler')
         if not compiler_tag:
@@ -641,6 +641,7 @@ class RobotMujocoXML(RobotURDF):
         option_tag['integrator'] = "implicitfast"
         option_tag['impratio'] = 10
 
+        model.insert(0, act_tag)
         model.insert(0, default_tag)
         model.insert(0, option_tag)
         model.insert(0, compiler_tag)
