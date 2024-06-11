@@ -31,7 +31,7 @@ setuptools.setup(
     "robot robotics cad design onshape bullet pybullet sdf urdf gazebo ros model kinematics",
     install_requires=[
         "numpy", "pybullet", "requests", "commentjson", "colorama>=0.4.6", "numpy-stl",
-        "transforms3d", "beautifulsoup4", "mujoco"
+        "transforms3d", "beautifulsoup4", "mujoco", "lxml"
     ],
     include_package_data=True,
     package_data={'': ['bullet/*', 'README.md']},
