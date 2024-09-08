@@ -596,54 +596,143 @@ class RobotMujocoXML(RobotURDF):
         output_dir = Path(output_dir).absolute()
         print((output_dir / f'robot.{self.ext}').as_posix())
         mj_model = mujoco.MjModel.from_xml_path((output_dir / f'robot.{self.ext}').as_posix())
+        DOF = mj_model.nv
         for i in range(mj_model.nv):
             j = mj_model.joint(mujoco.mj_id2name(mj_model, mujoco.mjtObj.mjOBJ_JOINT, i))
             j.frictionloss = 0.1
+            j.damping = 1.5
         mujoco.mj_saveLastXML((output_dir / "robot.xml").as_posix(), mj_model)
+
+        with open((output_dir / "robot.urdf").as_posix(), "r") as f:
+            urdfsoup = BeautifulSoup(f.read(), "xml")
         with open((output_dir / "robot.xml").as_posix(), "r") as f:
-            soup = BeautifulSoup(f.read(), "xml")
-        model = soup.find('mujoco')
-        default_tag = soup.find('default')
+            xmlsoup = BeautifulSoup(f.read(), "xml")
+        model = xmlsoup.find('mujoco')
+        default_tag = xmlsoup.find('default')
         if not default_tag:
 
-            default_tag = soup.new_tag('default')
-        geom_default = soup.new_tag('geom',
-                                    attrs=dict(contype="0", conaffinity="0", group="2",
-                                               type="mesh"))
-        act_default = soup.new_tag('general',
-                                   attrs=dict(dyntype="none",
-                                              biastype="affine",
-                                              ctrlrange="-2.8 2.8",
-                                              forcerange="-87 87",
-                                              gainprm="4500",
-                                              biasprm="0 -4500 -450"))
+            default_tag = xmlsoup.new_tag('default')
+        geom_default = xmlsoup.new_tag('geom',
+                                       attrs=dict(contype="0",
+                                                  conaffinity="0",
+                                                  group="2",
+                                                  type="mesh"))
+        act_default = xmlsoup.new_tag('general',
+                                      attrs=dict(dyntype="none",
+                                                 biastype="affine",
+                                                 ctrlrange="-2.8 2.8",
+                                                 forcerange="-87 87",
+                                                 gainprm="4500",
+                                                 biasprm="0 -4500 -450"))
 
         default_tag.append(geom_default)
         default_tag.append(act_default)
+        # Create the asset tag
+        asset_tag = xmlsoup.new_tag('asset')
 
-        act_tag = soup.new_tag('actuator')
+        # Create the texture tag and its attributes
+        texture_tag = xmlsoup.new_tag('texture',
+                                      attrs={
+                                          'name': 'grid',
+                                          'type': '2d',
+                                          'builtin': 'checker',
+                                          'rgb1': '.2 .3 .4',
+                                          'rgb2': '.1 0.15 0.2',
+                                          'width': '512',
+                                          'height': '512',
+                                      })
+
+        # Create the material tag and its attributes
+        material_tag = xmlsoup.new_tag('material',
+                                       attrs={
+                                           'name': 'grid',
+                                           'texture': 'grid',
+                                           'texrepeat': '1 1',
+                                           'texuniform': 'true'
+                                       })
+
+        # Append the texture and material tags to the asset tag
+        asset_tag.append(texture_tag)
+        asset_tag.append(material_tag)
+
+        def find_joints_containing_name(soup, name_substring):
+            return soup.find_all(
+                'joint', attrs={'name': lambda value: name_substring in value if value else False})
+
+        for joint in find_joints_containing_name(urdfsoup, '_frame'):
+            parent_tag = joint.find('parent')
+            child_tag = joint.find('child')
+            origin_tag = joint.find('origin')
+            parent_body_tag = xmlsoup.find('body', attrs={'name': parent_tag['link']})
+            new_frame_tag = xmlsoup.new_tag('site',
+                                            attrs=dict(name=child_tag['link'],
+                                                       size="0.01",
+                                                       pos=origin_tag['xyz'],
+                                                       euler=origin_tag['rpy'],
+                                                       rgba="1 0 0 1",
+                                                       group="1"))
+            parent_body_tag.append(new_frame_tag)
+
+        act_tag = xmlsoup.new_tag('actuator')
         for i in range(mj_model.nv):
             joint_name = mujoco.mj_id2name(mj_model, mujoco.mjtObj.mjOBJ_JOINT, i)
-            general_tag = soup.new_tag('general',
-                                       attrs=dict(name=joint_name + "_act", joint=joint_name))
+            general_tag = xmlsoup.new_tag('general',
+                                          attrs=dict(name=joint_name + "_act", joint=joint_name))
             act_tag.append(general_tag)
-        compiler_tag = soup.find('compiler')
+        compiler_tag = xmlsoup.find('compiler')
         if not compiler_tag:
-            compiler_tag = soup.new_tag('compiler')
+            compiler_tag = xmlsoup.new_tag('compiler')
         compiler_tag['angle'] = "radian"
         compiler_tag['autolimits'] = "true"
         compiler_tag['balanceinertia'] = "true"
         compiler_tag['meshdir'] = "."
 
-        option_tag = soup.find('option')
+        world_tag = xmlsoup.find('worldbody')
+        target_body_tag = xmlsoup.new_tag('body',
+                                          attrs=dict(name="target",
+                                                     pos="0 0 0.5",
+                                                     quat="1 0 0 0",
+                                                     mocap="true"))
+        target_body_geom_tag = xmlsoup.new_tag('geom',
+                                               attrs=dict(type="box",
+                                                          size=".05 .05 .05",
+                                                          rgba=".6 .3 .3 .5"))
+        target_body_geom_site = xmlsoup.new_tag('site',
+                                                attrs=dict(name="target",
+                                                           type="sphere",
+                                                           size="0.01",
+                                                           rgba="0 0 1 1"))
+        target_body_tag.append(target_body_geom_tag)
+        target_body_tag.append(target_body_geom_site)
+        world_tag.append(target_body_tag)
+
+        light_tag = xmlsoup.new_tag('light', attrs=dict(name="top", pos="0 0 1", mode="trackcom"))
+        floor_tag = xmlsoup.new_tag('geom',
+                                    attrs=dict(name="floor",
+                                               size="1 1 0.01",
+                                               type="plane",
+                                               material="grid"))
+        world_tag.append(floor_tag)
+        world_tag.append(light_tag)
+
+        keyframe_tag = xmlsoup.new_tag('keyframe')
+        homekey_tag = xmlsoup.new_tag('key',
+                                      attrs=dict(name="home",
+                                                 qpos=" ".join(['0'] * DOF),
+                                                 ctrl=" ".join(['0'] * DOF)))
+        keyframe_tag.append(homekey_tag)
+
+        option_tag = xmlsoup.find('option')
         if not option_tag:
-            option_tag = soup.new_tag('option')
+            option_tag = xmlsoup.new_tag('option')
         option_tag['integrator'] = "implicitfast"
         option_tag['impratio'] = 10
 
+        model.insert(0, keyframe_tag)
         model.insert(0, act_tag)
+        model.insert(0, asset_tag)
         model.insert(0, default_tag)
         model.insert(0, option_tag)
         model.insert(0, compiler_tag)
         with open((output_dir / "robot.xml").as_posix(), "w") as f:
-            f.write(soup.prettify())
+            f.write(xmlsoup.prettify())
